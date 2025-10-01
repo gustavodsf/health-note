@@ -1,0 +1,198 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/ehr_integration_system/app/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+// NextAuth.js Models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(PATIENT)
+  firstName     String?
+  lastName      String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  patientData   PatientData[]
+  auditLogs     AuditLog[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// EHR System Models
+model EHRSystem {
+  id          String   @id @default(cuid())
+  name        String   @unique // "Athena", "Allscripts", etc.
+  description String?
+  version     String?
+  isActive    Boolean  @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fieldMappings EHRFieldMapping[]
+  patientData   PatientData[]
+  auditLogs     AuditLog[]
+}
+
+model EHRFieldMapping {
+  id             String   @id @default(cuid())
+  ehrSystemId    String
+  standardField  String   // Standard field name (e.g., "name", "gender", "dob")
+  ehrField       String   // EHR-specific field name (e.g., "PATIENT_IDENT_NAME")
+  dataType       String   // "string", "date", "boolean", "number"
+  isRequired     Boolean  @default(false)
+  description    String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ehrSystem EHRSystem @relation(fields: [ehrSystemId], references: [id], onDelete: Cascade)
+
+  @@unique([ehrSystemId, standardField])
+}
+
+model PatientData {
+  id                String   @id @default(cuid())
+  userId            String
+  ehrSystemId       String?  // Optional: if data is mapped to specific EHR
+  
+  // Core Demographics
+  name              String
+  email             String?
+  phone             String?
+  gender            String?
+  dateOfBirth       DateTime?
+  
+  // Address Information
+  address           String?
+  city              String?
+  state             String?
+  zipCode           String?
+  country           String?  @default("US")
+  
+  // Medical Information
+  allergies         String?  @db.Text
+  medications       String?  @db.Text
+  medicalHistory    String?  @db.Text
+  socialHistory     String?  @db.Text
+  familyHistory     String?  @db.Text
+  
+  // Emergency Contact
+  emergencyContactName    String?
+  emergencyContactPhone   String?
+  emergencyContactRelation String?
+  
+  // Insurance Information
+  insuranceProvider String?
+  insuranceNumber   String?
+  insuranceGroup    String?
+  
+  // System Fields
+  isActive          Boolean  @default(true)
+  lastModifiedBy    String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ehrSystem EHRSystem? @relation(fields: [ehrSystemId], references: [id])
+  auditLogs AuditLog[]
+
+  @@index([userId])
+  @@index([ehrSystemId])
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  userId      String?
+  patientDataId String?
+  ehrSystemId String?
+  
+  action      AuditAction // CREATE, READ, UPDATE, DELETE, EXPORT, IMPORT
+  entityType  String      // "PatientData", "EHRFieldMapping", "EHRSystem"
+  entityId    String
+  
+  oldValues   Json?       // Previous state (for updates/deletes)
+  newValues   Json?       // New state (for creates/updates)
+  
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?       // Additional context
+  
+  createdAt   DateTime    @default(now())
+
+  user        User?        @relation(fields: [userId], references: [id])
+  patientData PatientData? @relation(fields: [patientDataId], references: [id])
+  ehrSystem   EHRSystem?   @relation(fields: [ehrSystemId], references: [id])
+
+  @@index([userId])
+  @@index([patientDataId])
+  @@index([ehrSystemId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// Enums
+enum UserRole {
+  PATIENT
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  EXPORT
+  IMPORT
+  LOGIN
+  LOGOUT
+}
