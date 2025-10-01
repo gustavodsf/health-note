@@ -59,7 +59,7 @@ A comprehensive Electronic Health Record (EHR) integration platform built with N
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/gustavodsf/health-note
    cd health-note
    ```
 
